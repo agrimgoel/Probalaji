@@ -6,15 +6,58 @@ import sys
 import urllib.parse
 from openpyxl import Workbook, load_workbook
 import datetime
+import requests
+import threading
 
 PORT = 8080
 EXCEL_FILE = os.path.join(os.getcwd(), "warranty_registry_backup.xlsx")
 PENDING_FILE = os.path.join(os.getcwd(), "pending_backup.json")
 PENDING_CARD_FILE = os.path.join(os.getcwd(), "pending_card_updates.json")
 
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLTO734OJ_9Z-qJkfztFEvtzk2hTDMhVaf5KbKwu_J3m0tzPl_rqAo6pJjhTLLX9RJWg/exec"
+
 RECORDS_CACHE = []
 PENDING_WRITES = []
 PENDING_CARD_UPDATES = []
+
+def sync_to_google_sheets_async(record, action_type="register"):
+    """Sync data to Google Sheets Apps Script web app asynchronously."""
+    def send_request():
+        try:
+            # We send both query parameters (for doGet) and JSON payload (for doPost)
+            # to be 100% compatible with how the Apps Script was written.
+            params = {
+                "action": action_type,
+                "name": record.get("name", ""),
+                "phone": record.get("phone", ""),
+                "address": record.get("address", ""),
+                "product": record.get("product", ""),
+                "brand": record.get("brand", ""),
+                "serial": record.get("serial", ""),
+                "date": record.get("date", ""),
+                "duration": record.get("duration", ""),
+                "cardGiven": record.get("cardGiven", "No")
+            }
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            response = requests.post(
+                APPS_SCRIPT_URL,
+                params=params,
+                json=params,
+                headers=headers,
+                timeout=12
+            )
+            print(f"Google Sheets Sync [{action_type}] Status: {response.status_code}")
+            print(f"Response: {response.text[:200]}")
+        except Exception as e:
+            print(f"Google Sheets Sync Warning/Error [{action_type}]: {e}")
+
+    thread = threading.Thread(target=send_request)
+    thread.daemon = True
+    thread.start()
 
 def init_excel():
     """Ensure the Excel file exists with proper headers."""
@@ -324,6 +367,9 @@ class BackupHandler(http.server.SimpleHTTPRequestHandler):
                 save_pending_json()
                 print(f"Added to server cache (boundless): {name} | {serial}")
                 
+                # Trigger Google Sheets Apps Script web app sync
+                sync_to_google_sheets_async(record, "register")
+                
                 # Flush
                 flushed = flush_pending_writes()
                 
@@ -363,6 +409,7 @@ class BackupHandler(http.server.SimpleHTTPRequestHandler):
                     if r.get("serial", "").strip().upper() == serial_upper:
                         r["cardGiven"] = "Yes"
                         updated_in_cache = True
+                        sync_to_google_sheets_async(r, "card-given")
                 
                 if not updated_in_cache:
                     self.send_error_response(404, f"Serial number {serial} not found in database.")
