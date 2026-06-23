@@ -4,46 +4,17 @@
 const ADMIN_WHATSAPP = "9837392225";
 
 // 1. DATABASE INITIALIZATION & MOCK SEEDING
+// ═══════════════════════════════════════════════════════════════
+//  PASTE YOUR GOOGLE APPS SCRIPT URL BELOW (keep the quotes)
+// ═══════════════════════════════════════════════════════════════
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLTO734OJ_9Z-qJkfztFEvtzk2hTDMhVaf5KbKwu_J3m0tzPl_rqAo6pJjhTLLX9RJWg/exec";
+// ═══════════════════════════════════════════════════════════════
+
 let complaints = JSON.parse(localStorage.getItem('pb_complaints')) || [];
-let warrantyRegistry = JSON.parse(localStorage.getItem('pb_warranty_registry')) || [];
+let warrantyRegistry = [];  // Always loaded fresh from Google Sheets
 
 // Seed database with mock data if completely empty (to make the demo look realistic immediately)
-if (warrantyRegistry.length === 0) {
-  const mockSales = [
-    {
-      name: "Aarav Sharma",
-      phone: "9876543210",
-      address: "102 Sky Tower, Sector 62, Noida",
-      product: "Promax 200AH",
-      brand: "Promax",
-      serial: "PRX-2026-9874",
-      date: "2025-06-15", // Active warranty
-      duration: "24"
-    },
-    {
-      name: "Priya Patel",
-      phone: "9123456789",
-      address: "Flat 4B, Emerald Heights, Mumbai",
-      product: "Other brand inverter 12V",
-      brand: "Luminous",
-      serial: "LUM-8874-9021",
-      date: "2024-01-10", // Expired warranty
-      duration: "12"
-    },
-    {
-      name: "Karan Johar",
-      phone: "9988776655",
-      address: "B-502, Gardenia Residency, Bangalore",
-      product: "Promax 180AH",
-      brand: "Promax",
-      serial: "PRX-2025-4512",
-      date: "2025-11-20", // Under warranty
-      duration: "36"
-    }
-  ];
-  localStorage.setItem('pb_warranty_registry', JSON.stringify(mockSales));
-  warrantyRegistry = mockSales;
-}
+// Mock seed removed — data is loaded from Google Sheets cloud database
 
 if (complaints.length === 0) {
   const mockComplaints = [
@@ -79,70 +50,26 @@ if (complaints.length === 0) {
 
 // 1.1 LOCAL EXCEL SERVER SYNC ENGINE
 function loadExcelBackupAndSync() {
-  // Fetch real Excel backup file path
-  fetch('/api/excel-path')
-    .then(res => res.json())
-    .then(data => {
-      const pathEl = document.getElementById('excel-file-path');
-      if (pathEl && data.path) {
-        pathEl.innerText = data.path;
-      }
-    })
-    .catch(err => console.warn("Failed to get Excel path from server:", err));
+  // Show label
+  const pathEl = document.getElementById('excel-file-path');
+  if (pathEl) pathEl.innerText = '☁️ Google Sheets Cloud Database (Synced across all devices)';
 
-  // Fetch all warranties stored in the Excel sheet
-  fetch('/api/warranties')
+  // Call Google Apps Script directly — works from any device, no server.py needed
+  fetch(APPS_SCRIPT_URL)
     .then(res => res.json())
-    .then(serverWarranties => {
-      if (!Array.isArray(serverWarranties)) return;
-      
-      console.log(`Loaded ${serverWarranties.length} warranties from Excel backup.`);
-      
-      // Merge records. Dedup by composite signature (name + phone + serial + date).
-      let localWarranties = JSON.parse(localStorage.getItem('pb_warranty_registry')) || [];
-      let merged = [...serverWarranties];
-      
-      // Build set of server record signatures
-      let serverSignatures = new Set(serverWarranties.map(w => 
-        `${w.name}_${w.phone}_${w.serial}_${w.date}`.toUpperCase().trim()
-      ));
-      
-      // Check if any local warranties are not in the server database (sync up to Excel)
-      let unsyncedWarranties = [];
-      localWarranties.forEach(localW => {
-        const sig = `${localW.name}_${localW.phone}_${localW.serial}_${localW.date}`.toUpperCase().trim();
-        if (!serverSignatures.has(sig)) {
-          unsyncedWarranties.push(localW);
-          merged.push(localW);
-          serverSignatures.add(sig);
-        }
-      });
-      
-      // If we have local-only records, sync them to the Excel server
-      if (unsyncedWarranties.length > 0) {
-        console.log(`Syncing ${unsyncedWarranties.length} unsynced local warranties to Excel backup server...`);
-        unsyncedWarranties.forEach(w => {
-          fetch('/api/warranty', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(w)
-          })
-          .then(res => res.json())
-          .then(resData => console.log("Synced entry response:", resData))
-          .catch(err => console.error("Sync error:", err));
-        });
-      }
-      
-      // Save combined list to localStorage and update memory
-      localStorage.setItem('pb_warranty_registry', JSON.stringify(merged));
-      warrantyRegistry = merged;
-      
-      // Refresh UI display with loaded Excel database
+    .then(result => {
+      const serverWarranties = result.data || [];
+      console.log(`Loaded ${serverWarranties.length} warranties from Google Sheets.`);
+
+      // Google Sheets is the MASTER — all devices get same data
+      warrantyRegistry = serverWarranties;
+
       updateMetrics();
       renderAdminRegistries();
     })
     .catch(err => {
-      console.warn("Could not load from backend server (offline or static launch):", err);
+      console.warn("Could not reach Google Sheets:", err);
+      showToastNotification("⚠️ Could not load data. Check internet connection.");
     });
 }
 
@@ -179,10 +106,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const today = new Date().toISOString().split('T')[0];
     dateInput.value = today;
   }
-  
+
   // Sync registry with Excel server
   loadExcelBackupAndSync();
-  
+
   // Initial renders
   updateMetrics();
   renderAdminComplaints();
@@ -195,7 +122,7 @@ function switchMainView(targetView) {
   // Toggle nav button active styles
   const custBtn = document.getElementById('tab-btn-customer');
   const admBtn = document.getElementById('tab-btn-admin');
-  
+
   if (targetView === 'customer') {
     custBtn.classList.add('active');
     admBtn.classList.remove('active');
@@ -206,13 +133,13 @@ function switchMainView(targetView) {
     custBtn.classList.remove('active');
     document.getElementById('view-admin').classList.add('active');
     document.getElementById('view-customer').classList.remove('active');
-    
+
     // Check security authentication
     const isAuthenticated = sessionStorage.getItem('pb_admin_auth') === 'true';
     if (isAuthenticated) {
       document.getElementById('admin-login-panel').style.display = 'none';
       document.getElementById('admin-authenticated-console').style.display = 'block';
-      
+
       // Refresh admin tables and stats
       updateMetrics();
       renderAdminComplaints();
@@ -241,16 +168,16 @@ function handlePinKey(event) {
 function verifyAdminPIN() {
   const pinInput = document.getElementById('admin-pin');
   const errorMsg = document.getElementById('admin-login-error');
-  
+
   if (pinInput.value === ADMIN_PIN) {
     sessionStorage.setItem('pb_admin_auth', 'true');
     errorMsg.style.display = 'none';
     pinInput.value = '';
-    
+
     // Transition views smoothly
     document.getElementById('admin-login-panel').style.display = 'none';
     document.getElementById('admin-authenticated-console').style.display = 'block';
-    
+
     // Load lists
     updateMetrics();
     renderAdminComplaints();
@@ -272,10 +199,10 @@ function lockAdminConsole() {
 function switchAdminSubView(targetPanel) {
   const compBtn = document.getElementById('subtab-btn-complaints');
   const warrBtn = document.getElementById('subtab-btn-warranty');
-  
+
   const compPanel = document.getElementById('admin-panel-complaints');
   const warrPanel = document.getElementById('admin-panel-warranty');
-  
+
   if (targetPanel === 'complaints') {
     compBtn.classList.add('active');
     warrBtn.classList.remove('active');
@@ -293,7 +220,7 @@ function switchAdminSubView(targetPanel) {
 function handleProductModelChange(value, prefix) {
   const brandGroup = document.getElementById(`${prefix}-brand-group`);
   const brandInput = document.getElementById(`${prefix}-brand`);
-  
+
   if (brandGroup && brandInput) {
     if (value && !value.startsWith("Promax")) {
       brandGroup.style.display = "block";
@@ -418,21 +345,21 @@ function appendChatBubble(htmlText, sender) {
 function calculateWarrantyStatus(purchaseDateStr, durationMonths) {
   const purchaseDate = new Date(purchaseDateStr);
   const duration = parseInt(durationMonths, 10);
-  
+
   // Expiration date
   const expirationDate = new Date(purchaseDate);
   expirationDate.setMonth(purchaseDate.getMonth() + duration);
-  
+
   const currentDate = new Date();
-  
+
   // Calculate difference
   const totalDays = Math.ceil((expirationDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
   const remainingDays = Math.ceil((expirationDate.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24));
-  
+
   const isUnderWarranty = remainingDays > 0;
   const elapsedDays = totalDays - Math.max(0, remainingDays);
   const remainingPercent = isUnderWarranty ? Math.max(0, Math.min(100, Math.floor((remainingDays / totalDays) * 100))) : 0;
-  
+
   return {
     isUnderWarranty,
     purchaseDateFormatted: purchaseDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -447,15 +374,15 @@ function calculateWarrantyStatus(purchaseDateStr, durationMonths) {
 function lookupWarranty() {
   const serialInput = document.getElementById('lookup-serial').value.trim().toUpperCase();
   const resultCard = document.getElementById('warranty-result');
-  
+
   if (!serialInput) {
     alert("Please enter a product serial number to search.");
     return;
   }
-  
+
   // Filter for matching registries by Serial Number
   const matches = warrantyRegistry.filter(record => record.serial.toUpperCase() === serialInput);
-  
+
   if (matches.length === 0) {
     resultCard.style.display = 'flex';
     resultCard.innerHTML = `
@@ -469,18 +396,18 @@ function lookupWarranty() {
     `;
     return;
   }
-  
+
   // Build lookup report
   let cardsHtml = `<h4 style="color: var(--color-secondary); margin-bottom: 0.75rem;">Warranty Records Found (${matches.length})</h4>`;
-  
+
   matches.forEach(match => {
     const analysis = calculateWarrantyStatus(match.date, match.duration);
-    
+
     // Status button html
-    const statusBtnHtml = analysis.isUnderWarranty 
+    const statusBtnHtml = analysis.isUnderWarranty
       ? `<div style="background: linear-gradient(135deg, #047857 0%, #064e3b 100%); color: #ffffff; border: 1.5px solid #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.4); text-align: center; padding: 0.9rem; border-radius: 0.75rem; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.05em; margin-bottom: 1.25rem; text-transform: uppercase;">🟢 ACTIVE WARRANTY COVERAGE</div>`
       : `<div style="background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%); color: #ffffff; border: 1.5px solid #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); text-align: center; padding: 0.9rem; border-radius: 0.75rem; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.05em; margin-bottom: 1.25rem; text-transform: uppercase;">🔴 WARRANTY PERIOD FINISHED</div>`;
-    
+
     // Choose battery color class
     let colorClass = "";
     if (analysis.remainingPercent > 50) {
@@ -490,7 +417,7 @@ function lookupWarranty() {
     } else {
       colorClass = "danger"; // Red
     }
-    
+
     cardsHtml += `
       <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 1.25rem; margin-bottom: 1.25rem; &:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }">
         ${statusBtnHtml}
@@ -557,7 +484,7 @@ function lookupWarranty() {
       </div>
     `;
   });
-  
+
   resultCard.style.display = 'flex';
   resultCard.innerHTML = cardsHtml;
 }
@@ -570,34 +497,34 @@ function handleNameInput(nameVal) {
   const addressField = document.getElementById('comp-address');
   const productField = document.getElementById('comp-product');
   const serialWrapper = document.getElementById('serial-input-wrapper');
-  
+
   if (!nameVal || nameVal.trim().length < 3) {
     if (nameIndicator) nameIndicator.style.display = 'none';
     return;
   }
-  
+
   // Find case-insensitive exact name matches in warranty registry
   const matches = warrantyRegistry.filter(record => record.name.toLowerCase() === nameVal.trim().toLowerCase());
-  
+
   if (matches.length > 0) {
     if (nameIndicator) nameIndicator.style.display = 'block';
-    
+
     // Autofill phone and address
     phoneField.value = matches[0].phone;
     addressField.value = matches[0].address;
-    
+
     if (matches.length === 1) {
       // Exactly 1 product registered
       productField.value = matches[0].product;
       handleProductModelChange(matches[0].product, 'comp');
       const brandField = document.getElementById('comp-brand');
       if (brandField) brandField.value = matches[0].brand || "";
-      
+
       serialWrapper.innerHTML = `<input type="text" id="comp-serial" class="input-styled" value="${matches[0].serial}" required>`;
     } else {
       // Multiple products registered under this name
       window.currentCustomerMatches = matches;
-      
+
       let dropdownHtml = `<select id="comp-serial" class="input-styled" required onchange="handleSerialDropdownChange(this.value)">`;
       dropdownHtml += `<option value="" disabled selected>-- Select Your Battery Serial No. --</option>`;
       matches.forEach(match => {
@@ -605,7 +532,7 @@ function handleNameInput(nameVal) {
       });
       dropdownHtml += `<option value="manual">Enter other manually...</option>`;
       dropdownHtml += `</select>`;
-      
+
       serialWrapper.innerHTML = dropdownHtml;
       // Clear product select until they choose a serial from dropdown
       productField.value = "";
@@ -624,7 +551,7 @@ function handleSerialDropdownChange(serialVal) {
   const productField = document.getElementById('comp-product');
   const serialWrapper = document.getElementById('serial-input-wrapper');
   const brandField = document.getElementById('comp-brand');
-  
+
   if (serialVal === 'manual') {
     serialWrapper.innerHTML = `<input type="text" id="comp-serial" class="input-styled" placeholder="e.g. PRX-2026-9874" required>`;
     productField.value = "";
@@ -636,7 +563,7 @@ function handleSerialDropdownChange(serialVal) {
     }, 50);
     return;
   }
-  
+
   if (window.currentCustomerMatches) {
     const match = window.currentCustomerMatches.find(m => m.serial === serialVal);
     if (match) {
@@ -650,17 +577,17 @@ function handleSerialDropdownChange(serialVal) {
 function showToastNotification(message) {
   const toast = document.getElementById('live-toast');
   const toastMsg = document.getElementById('toast-message');
-  
+
   if (toast && toastMsg) {
     toastMsg.innerText = message;
     toast.style.display = 'flex';
-    
+
     // Snappy transitions using transform
     setTimeout(() => {
       toast.style.transform = 'translateY(0)';
       toast.style.opacity = '1';
     }, 50);
-    
+
     // Auto close
     setTimeout(() => {
       toast.style.transform = 'translateY(100px)';
@@ -674,14 +601,14 @@ function showToastNotification(message) {
 
 function registerComplaint(event) {
   event.preventDefault();
-  
+
   const name = document.getElementById('comp-name').value.trim();
   const phone = document.getElementById('comp-phone').value.trim();
   const address = document.getElementById('comp-address').value.trim();
   const product = document.getElementById('comp-product').value;
   const serial = document.getElementById('comp-serial').value.trim();
   const details = document.getElementById('comp-desc').value.trim();
-  
+
   const newTicket = {
     id: "TCK-" + Math.floor(1000 + Math.random() * 9000),
     name,
@@ -693,44 +620,44 @@ function registerComplaint(event) {
     status: "pending",
     timestamp: new Date().toISOString()
   };
-  
+
   complaints.unshift(newTicket);
   localStorage.setItem('pb_complaints', JSON.stringify(complaints));
-  
+
   // Calculate Call times
   const now = new Date();
   const callbackTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour call limit
-  
+
   const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: true };
   const nowStr = now.toLocaleTimeString('en-US', timeOptions);
   const callbackStr = callbackTime.toLocaleTimeString('en-US', timeOptions);
   const dateStr = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-  
+
   // Update customer popup overlay message
   document.getElementById('complaint-success-message').innerHTML = `
     Your complaint has been successfully registered!<br>
     <strong>Our representative will call you under 1 hour.</strong>
   `;
-  
+
   document.getElementById('complaint-time-details').innerHTML = `
     Registered On: <strong>${nowStr} (${dateStr})</strong><br>
     Assured Call Before: <strong style="color: #ff3333;">${callbackStr}</strong>
   `;
-  
+
   // Open popup
   document.getElementById('complaint-success').style.display = 'flex';
-  
+
   // Trigger Live Toast notification (Admin Alert)
   showToastNotification(`🔔 New Ticket Alert: Complaint logged by ${name} for serial ${serial}!`);
-  
+
   // Auto update admin table in background
   updateMetrics();
   renderAdminComplaints();
-  
+
   // Auto open whatsapp details to Admin number
   const matchSales = warrantyRegistry.filter(record => record.serial === serial || record.phone === phone);
   const waLink = compileWhatsAppLink(newTicket, matchSales[0]);
-  
+
   setTimeout(() => {
     window.open(waLink, '_blank');
   }, 1000);
@@ -738,17 +665,17 @@ function registerComplaint(event) {
 
 function resetComplaintForm() {
   document.getElementById('complaint-form').reset();
-  
+
   // Hide lookup indicator
   const nameIndicator = document.getElementById('name-lookup-indicator');
   if (nameIndicator) nameIndicator.style.display = 'none';
-  
+
   // Restore default serial input field if it was converted to select
   const serialWrapper = document.getElementById('serial-input-wrapper');
   if (serialWrapper) {
     serialWrapper.innerHTML = `<input type="text" id="comp-serial" class="input-styled" placeholder="e.g. PRX-2026-9874" required>`;
   }
-  
+
   document.getElementById('complaint-success').style.display = 'none';
 }
 
@@ -756,7 +683,7 @@ function resetComplaintForm() {
 // 6. ADMIN - PROMAX SALES REGISTER
 function registerPromaxSale(event) {
   event.preventDefault();
-  
+
   const name = document.getElementById('w-name').value.trim();
   const phone = document.getElementById('w-phone').value.trim();
   const address = document.getElementById('w-address').value.trim();
@@ -764,15 +691,15 @@ function registerPromaxSale(event) {
   const serial = document.getElementById('w-serial').value.trim();
   const date = document.getElementById('w-date').value;
   const duration = document.getElementById('w-duration').value;
-  
+
   // Resolve brand based on product model or brand input field
   const brandVal = productVal.startsWith("Promax")
     ? "Promax"
     : (document.getElementById('w-brand').value.trim() || "Other");
-    
+
   const cardInput = document.getElementById('w-card-given');
   const cardGiven = cardInput ? (cardInput.checked ? "Yes" : "No") : "No";
-  
+
   const newSale = {
     name,
     phone,
@@ -784,54 +711,37 @@ function registerPromaxSale(event) {
     duration,
     cardGiven: cardGiven
   };
-  
-  // Submit new registration to local Excel backend server
-  fetch('/api/warranty', {
+
+  // Save directly to Google Sheets — syncs across ALL devices instantly
+  const payload = Object.assign({}, newSale, { action: 'add' });
+  fetch(APPS_SCRIPT_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(newSale)
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   })
-  .then(res => res.json())
-  .then(data => {
-    console.log("Server registration backup response:", data);
-    
-    // Add to local database state (allowing duplicate serials)
-    warrantyRegistry.unshift(newSale);
-    localStorage.setItem('pb_warranty_registry', JSON.stringify(warrantyRegistry));
-    
-    // Show success overlay
-    document.getElementById('warranty-success').style.display = 'flex';
-    
-    // Refresh metrics & UI registry table
-    updateMetrics();
-    renderAdminRegistries();
-  })
-  .catch(err => {
-    console.error("Excel backup failed:", err);
-    // If offline, save in localStorage so data is not lost, and sync on next boot
-    warrantyRegistry.unshift(newSale);
-    localStorage.setItem('pb_warranty_registry', JSON.stringify(warrantyRegistry));
-    
-    document.getElementById('warranty-success').style.display = 'flex';
-    updateMetrics();
-    renderAdminRegistries();
-    
-    showToastNotification("⚠️ Saved locally, but failed to write to Excel backup.");
-  });
+    .then(res => res.json())
+    .then(data => {
+      console.log("Google Sheets save response:", data);
+      document.getElementById('warranty-success').style.display = 'flex';
+      // Reload from Google Sheets so ALL devices see the new entry
+      loadExcelBackupAndSync();
+    })
+    .catch(err => {
+      console.error("Google Sheets save failed:", err);
+      showToastNotification("⚠️ Could not save to cloud. Check your internet connection.");
+    });
 }
 
 function resetWarrantyForm() {
   document.getElementById('warranty-register-form').reset();
   document.getElementById('warranty-success').style.display = 'none';
-  
+
   // Set date field back to default today
   const dateInput = document.getElementById('w-date');
   if (dateInput) {
     dateInput.value = new Date().toISOString().split('T')[0];
   }
-  
+
   const cardInput = document.getElementById('w-card-given');
   if (cardInput) {
     cardInput.checked = false;
@@ -845,7 +755,7 @@ function updateMetrics() {
   const pendingVal = document.getElementById('metric-pending');
   const activeVal = document.getElementById('metric-active');
   const warrantyVal = document.getElementById('metric-warranty');
-  
+
   if (totalVal && pendingVal && activeVal && warrantyVal) {
     totalVal.innerText = complaints.length;
     pendingVal.innerText = complaints.filter(c => c.status === 'pending').length;
@@ -857,20 +767,20 @@ function updateMetrics() {
 function renderAdminComplaints() {
   const tableBody = document.getElementById('complaints-table-body');
   if (!tableBody) return;
-  
+
   const filterStatus = document.getElementById('filter-complaints-status').value;
   const searchQuery = document.getElementById('search-complaints').value.trim().toLowerCase();
-  
+
   // Filter complaints array
   let filtered = complaints.filter(c => {
     const matchesStatus = filterStatus === 'all' || c.status === filterStatus;
-    const matchesSearch = c.name.toLowerCase().includes(searchQuery) || 
-                          c.phone.includes(searchQuery) || 
-                          c.serial.toLowerCase().includes(searchQuery) ||
-                          c.id.toLowerCase().includes(searchQuery);
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery) ||
+      c.phone.includes(searchQuery) ||
+      c.serial.toLowerCase().includes(searchQuery) ||
+      c.id.toLowerCase().includes(searchQuery);
     return matchesStatus && matchesSearch;
   });
-  
+
   if (filtered.length === 0) {
     tableBody.innerHTML = `
       <tr>
@@ -882,11 +792,11 @@ function renderAdminComplaints() {
     `;
     return;
   }
-  
+
   tableBody.innerHTML = filtered.map(c => {
     // Determine dynamic warranty connection
     let warrantyMarkup = "";
-    
+
     // Check if serial matches any Promax warranty registration
     const matchSales = warrantyRegistry.filter(record => record.serial === c.serial || record.phone === c.phone);
     if (matchSales.length > 0) {
@@ -901,10 +811,10 @@ function renderAdminComplaints() {
       // General or other brand inverter
       warrantyMarkup = `<span style="font-size: 0.75rem; color: var(--text-muted)">Non-Promax / Unregistered</span>`;
     }
-    
+
     // Compile pre-filled WhatsApp alert text URL link
     const waLink = compileWhatsAppLink(c, matchSales[0]);
-    
+
     return `
       <tr>
         <td style="font-weight: 700; color: var(--color-secondary);">${c.id}</td>
@@ -948,15 +858,15 @@ function renderAdminComplaints() {
 function renderAdminRegistries() {
   const tableBody = document.getElementById('registries-table-body');
   if (!tableBody) return;
-  
+
   const searchQuery = document.getElementById('search-registries').value.trim().toLowerCase();
-  
+
   let filtered = warrantyRegistry.filter(record => {
     return record.name.toLowerCase().includes(searchQuery) ||
-           record.phone.includes(searchQuery) ||
-           record.serial.toLowerCase().includes(searchQuery);
+      record.phone.includes(searchQuery) ||
+      record.serial.toLowerCase().includes(searchQuery);
   });
-  
+
   if (filtered.length === 0) {
     tableBody.innerHTML = `
       <tr>
@@ -968,7 +878,7 @@ function renderAdminRegistries() {
     `;
     return;
   }
-  
+
   tableBody.innerHTML = filtered.map(r => {
     const analysis = calculateWarrantyStatus(r.date, r.duration);
     const cardStatusHtml = r.cardGiven === "Yes"
@@ -1029,22 +939,22 @@ function compileWhatsAppLink(complaint, warrantyMatch) {
     const analysis = calculateWarrantyStatus(warrantyMatch.date, warrantyMatch.duration);
     warrantyText = `${analysis.statusText} (${analysis.remainingDays} Days Left)`;
   }
-  
+
   const textMsg = `*PROBALAJI AI - SERVICE REQUEST ALERT*\n` +
-                  `---------------------------------------------\n` +
-                  `*Ticket ID:* ${complaint.id}\n` +
-                  `*Customer Name:* ${complaint.name}\n` +
-                  `*Mobile Number:* ${complaint.phone}\n` +
-                  `*Service Address:* ${complaint.address}\n` +
-                  `*Product Type:* ${complaint.product}\n` +
-                  `*Product Serial:* ${complaint.serial}\n` +
-                  `*Warranty Status:* ${warrantyText}\n` +
-                  `*Problem Description:* "${complaint.details}"\n` +
-                  `---------------------------------------------\n` +
-                  `Please dispatch an engineer or call client directly.`;
-                  
+    `---------------------------------------------\n` +
+    `*Ticket ID:* ${complaint.id}\n` +
+    `*Customer Name:* ${complaint.name}\n` +
+    `*Mobile Number:* ${complaint.phone}\n` +
+    `*Service Address:* ${complaint.address}\n` +
+    `*Product Type:* ${complaint.product}\n` +
+    `*Product Serial:* ${complaint.serial}\n` +
+    `*Warranty Status:* ${warrantyText}\n` +
+    `*Problem Description:* "${complaint.details}"\n` +
+    `---------------------------------------------\n` +
+    `Please dispatch an engineer or call client directly.`;
+
   const encodedText = encodeURIComponent(textMsg);
-  
+
   // Directs message to the configurable admin WhatsApp number
   return `https://wa.me/91${ADMIN_WHATSAPP}?text=${encodedText}`;
 }
@@ -1055,22 +965,22 @@ function showCustomConfirm(message, onConfirm) {
   const msgEl = document.getElementById('confirm-modal-message');
   const okBtn = document.getElementById('confirm-modal-ok');
   const cancelBtn = document.getElementById('confirm-modal-cancel');
-  
+
   if (modal && msgEl && okBtn && cancelBtn) {
     msgEl.innerText = message;
     modal.style.display = 'flex';
-    
+
     // Clear old event handlers to prevent multiple firings
     const newOk = okBtn.cloneNode(true);
     const newCancel = cancelBtn.cloneNode(true);
     okBtn.parentNode.replaceChild(newOk, okBtn);
     cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-    
+
     newOk.addEventListener('click', () => {
       modal.style.display = 'none';
       onConfirm();
     });
-    
+
     newCancel.addEventListener('click', () => {
       modal.style.display = 'none';
     });
@@ -1087,45 +997,26 @@ function markCardGiven(serial) {
   showCustomConfirm(
     `Confirm that physical warranty card was handed over to the customer for Serial No: ${serial}?\n\nOnce marked as handed over, this status is permanently locked and cannot be changed!`,
     () => {
-      fetch('/api/warranty/card-given', {
+      fetch(APPS_SCRIPT_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ serial: serial })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'card-given', serial: serial })
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === 'success') {
-          // Permanently set in local memory
-          warrantyRegistry = warrantyRegistry.map(r => {
-            if (r.serial.toUpperCase().trim() === serial.toUpperCase().trim()) {
-              return { ...r, cardGiven: "Yes" };
-            }
-            return r;
-          });
-          localStorage.setItem('pb_warranty_registry', JSON.stringify(warrantyRegistry));
-          
-          // Refresh grid
-          renderAdminRegistries();
-          showToastNotification("📜 Warranty card status permanently locked and saved to Excel!");
-        } else {
-          alert("Failed to update status: " + data.message);
-        }
-      })
-      .catch(err => {
-        console.error("Failed to update card status:", err);
-        // Fallback update in local storage for offline support
-        warrantyRegistry = warrantyRegistry.map(r => {
-          if (r.serial.toUpperCase().trim() === serial.toUpperCase().trim()) {
-            return { ...r, cardGiven: "Yes" };
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'success') {
+            renderAdminRegistries();
+            showToastNotification("📜 Warranty card status permanently locked in Google Sheets!");
+            // Reload so all devices see the update
+            loadExcelBackupAndSync();
+          } else {
+            alert("Failed to update status: " + data.message);
           }
-          return r;
+        })
+        .catch(err => {
+          console.error("Failed to update card status:", err);
+          showToastNotification("⚠️ Could not update card status. Check internet connection.");
         });
-        localStorage.setItem('pb_warranty_registry', JSON.stringify(warrantyRegistry));
-        renderAdminRegistries();
-        showToastNotification("⚠️ Saved status locally. Failed to reach Excel backup server.");
-      });
     }
   );
 }
