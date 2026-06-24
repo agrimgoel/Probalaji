@@ -1,7 +1,7 @@
 // PROBALAJI AI - Main Application Controller
 
 // CONFIGURATION: Admin WhatsApp Number (Without country code prefix). Easily editable in future.
-const ADMIN_WHATSAPP = "9837392225";
+const ADMIN_WHATSAPP = "9045651385";
 
 // 1. DATABASE INITIALIZATION & MOCK SEEDING
 // ═══════════════════════════════════════════════════════════════
@@ -725,16 +725,16 @@ function registerPromaxSale(event) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-  .then(() => {
-    // no-cors gives opaque response — data WAS sent. Show success and reload.
-    document.getElementById('warranty-success').style.display = 'flex';
-    // Wait 2.5s for Google Sheets to process, then pull fresh data
-    setTimeout(() => loadExcelBackupAndSync(), 2500);
-  })
-  .catch(err => {
-    console.error('Save failed:', err);
-    showToastNotification('❌ Could not save. Check your internet connection.');
-  });
+    .then(() => {
+      // no-cors gives opaque response — data WAS sent. Show success and reload.
+      document.getElementById('warranty-success').style.display = 'flex';
+      // Wait 2.5s for Google Sheets to process, then pull fresh data
+      setTimeout(() => loadExcelBackupAndSync(), 2500);
+    })
+    .catch(err => {
+      console.error('Save failed:', err);
+      showToastNotification('❌ Could not save. Check your internet connection.');
+    });
 }
 
 function resetWarrantyForm() {
@@ -1009,13 +1009,13 @@ function markCardGiven(serial) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'card-given', serial: serial })
       })
-      .then(() => {
-        showToastNotification('📜 Warranty card permanently locked in Google Sheets!');
-        setTimeout(() => loadExcelBackupAndSync(), 2500);
-      })
-      .catch(() => {
-        showToastNotification('⚠️ Could not update card status. Check internet.');
-      });
+        .then(() => {
+          showToastNotification('📜 Warranty card permanently locked in Google Sheets!');
+          setTimeout(() => loadExcelBackupAndSync(), 2500);
+        })
+        .catch(() => {
+          showToastNotification('⚠️ Could not update card status. Check internet.');
+        });
     }
   );
 }
