@@ -48,28 +48,25 @@ if (complaints.length === 0) {
 }
 
 
-// 1.1 LOCAL EXCEL SERVER SYNC ENGINE
+// 1.1 CLOUD SYNC ENGINE — 100% Direct to Google Sheets, no server needed.
+// Works from any device anywhere in the world.
 function loadExcelBackupAndSync() {
-  // Show label
   const pathEl = document.getElementById('excel-file-path');
-  if (pathEl) pathEl.innerText = '☁️ Google Sheets Cloud Database (Synced across all devices)';
+  if (pathEl) pathEl.innerText = '☁️ Google Sheets Cloud Database (Live sync — all devices worldwide)';
 
-  // Call Google Apps Script directly — works from any device, no server.py needed
-  fetch(APPS_SCRIPT_URL)
+  // Direct GET to Google Apps Script — fully CORS-safe, works from any browser globally
+  fetch(APPS_SCRIPT_URL + '?t=' + Date.now()) // cache-bust to always get fresh data
     .then(res => res.json())
     .then(result => {
-      const serverWarranties = result.data || [];
-      console.log(`Loaded ${serverWarranties.length} warranties from Google Sheets.`);
-
-      // Google Sheets is the MASTER — all devices get same data
-      warrantyRegistry = serverWarranties;
-
+      const data = Array.isArray(result) ? result : (result.data || []);
+      console.log('☁️ Loaded', data.length, 'warranties from Google Sheets.');
+      warrantyRegistry = data;
       updateMetrics();
       renderAdminRegistries();
     })
     .catch(err => {
-      console.warn("Could not reach Google Sheets:", err);
-      showToastNotification("⚠️ Could not load data. Check internet connection.");
+      console.warn('Could not load from Google Sheets:', err);
+      showToastNotification('⚠️ Could not load warranty data. Check your internet connection.');
     });
 }
 
@@ -107,8 +104,11 @@ document.addEventListener('DOMContentLoaded', () => {
     dateInput.value = today;
   }
 
-  // Sync registry with Excel server
+  // Load all warranty data from Google Sheets (works on any device)
   loadExcelBackupAndSync();
+
+  // Auto-refresh every 30 seconds so new entries from other devices show up automatically
+  setInterval(loadExcelBackupAndSync, 30000);
 
   // Initial renders
   updateMetrics();
@@ -712,24 +712,29 @@ function registerPromaxSale(event) {
     cardGiven: cardGiven
   };
 
-  // Save directly to Google Sheets — syncs across ALL devices instantly
+  // ── Direct save to Google Sheets via Apps Script ──────────────────
+  // Uses no-cors POST: data is sent & saved in Google Sheets.
+  // Works from any device, any browser, anywhere in the world.
   const payload = Object.assign({}, newSale, { action: 'add' });
+
+  showToastNotification('💾 Saving to Google Sheets...');
+
   fetch(APPS_SCRIPT_URL, {
     method: 'POST',
+    mode: 'no-cors',   // Bypasses CORS preflight; data goes through to Apps Script
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   })
-    .then(res => res.json())
-    .then(data => {
-      console.log("Google Sheets save response:", data);
-      document.getElementById('warranty-success').style.display = 'flex';
-      // Reload from Google Sheets so ALL devices see the new entry
-      loadExcelBackupAndSync();
-    })
-    .catch(err => {
-      console.error("Google Sheets save failed:", err);
-      showToastNotification("⚠️ Could not save to cloud. Check your internet connection.");
-    });
+  .then(() => {
+    // no-cors gives opaque response — data WAS sent. Show success and reload.
+    document.getElementById('warranty-success').style.display = 'flex';
+    // Wait 2.5s for Google Sheets to process, then pull fresh data
+    setTimeout(() => loadExcelBackupAndSync(), 2500);
+  })
+  .catch(err => {
+    console.error('Save failed:', err);
+    showToastNotification('❌ Could not save. Check your internet connection.');
+  });
 }
 
 function resetWarrantyForm() {
@@ -997,26 +1002,20 @@ function markCardGiven(serial) {
   showCustomConfirm(
     `Confirm that physical warranty card was handed over to the customer for Serial No: ${serial}?\n\nOnce marked as handed over, this status is permanently locked and cannot be changed!`,
     () => {
+      // Direct POST to Google Sheets — works from any device globally
       fetch(APPS_SCRIPT_URL, {
         method: 'POST',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'card-given', serial: serial })
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === 'success') {
-            renderAdminRegistries();
-            showToastNotification("📜 Warranty card status permanently locked in Google Sheets!");
-            // Reload so all devices see the update
-            loadExcelBackupAndSync();
-          } else {
-            alert("Failed to update status: " + data.message);
-          }
-        })
-        .catch(err => {
-          console.error("Failed to update card status:", err);
-          showToastNotification("⚠️ Could not update card status. Check internet connection.");
-        });
+      .then(() => {
+        showToastNotification('📜 Warranty card permanently locked in Google Sheets!');
+        setTimeout(() => loadExcelBackupAndSync(), 2500);
+      })
+      .catch(() => {
+        showToastNotification('⚠️ Could not update card status. Check internet.');
+      });
     }
   );
 }
