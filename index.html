@@ -404,22 +404,47 @@
                     <label for="w-address">Customer Address</label>
                     <input type="text" id="w-address" class="input-styled" placeholder="Installation Address" required>
                   </div>
-                  <div class="form-group">
-                    <label for="w-product">Product Model</label>
-                    <select id="w-product" class="input-styled" required onchange="handleProductModelChange(this.value, 'w')">
-                      <option value="" disabled selected>Select Model</option>
-                      <option value="Promax 180AH">Promax 180AH</option>
-                      <option value="Promax 200AH">Promax 200AH</option>
-                      <option value="Other brand inverter 12V">Other brand inverter 12V</option>
-                      <option value="Other brand inverter 24V">Other brand inverter 24V</option>
-                      <option value="Other brand battery 150AH">Other brand battery 150AH</option>
-                      <option value="Other brand battery 220AH">Other brand battery 220AH</option>
-                      <option value="Lithium battery">Lithium battery</option>
-                    </select>
-                  </div>
-                  <div id="w-brand-group" class="form-group" style="display: none;">
-                    <label for="w-brand">Brand Name</label>
-                    <input type="text" id="w-brand" class="input-styled" placeholder="e.g. Luminous, Microtek, Exide">
+                  <div class="form-group full-width" id="w-product-selector">
+                    <label>Product Model</label>
+                    <!-- Hidden input carries the final composed product value -->
+                    <input type="hidden" id="w-product" required>
+
+                    <!-- Step 1: Battery type toggle -->
+                    <div id="w-battery-type-row" style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+                      <button type="button" id="w-btn-lithium"
+                        onclick="selectBatteryType('lithium')"
+                        class="battery-type-btn"
+                        style="flex: 1; padding: 0.7rem 1rem; border-radius: 0.65rem; border: 1.5px solid var(--border-color); background: rgba(255,255,255,0.03); color: var(--text-muted); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: var(--transition-smooth); display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        ⚡ Lithium
+                      </button>
+                      <button type="button" id="w-btn-nonlithium"
+                        onclick="selectBatteryType('nonlithium')"
+                        class="battery-type-btn"
+                        style="flex: 1; padding: 0.7rem 1rem; border-radius: 0.65rem; border: 1.5px solid var(--border-color); background: rgba(255,255,255,0.03); color: var(--text-muted); font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: var(--transition-smooth); display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                        🔋 Non-Lithium
+                      </button>
+                    </div>
+
+                    <!-- Step 2: Brand + Power inputs (shown after type selection) -->
+                    <div id="w-battery-power-row" style="display: none; flex-direction: column; gap: 0.65rem;">
+                      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <div>
+                          <label for="w-battery-brand" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem; display: block;">Brand Name</label>
+                          <input type="text" id="w-battery-brand" class="input-styled"
+                                 placeholder="e.g. Luminous, Exide, Amaron"
+                                 oninput="composeBatteryProductValue()"
+                                 style="width: 100%;">
+                        </div>
+                        <div>
+                          <label for="w-battery-power" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.4rem; display: block;"
+                                 id="w-battery-power-label">Battery Power</label>
+                          <input type="text" id="w-battery-power" class="input-styled"
+                                 placeholder="e.g. 100Ah, 150Ah, 220Ah"
+                                 oninput="composeBatteryProductValue()"
+                                 style="width: 100%;">
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div class="form-group">
                     <label for="w-serial">Product Serial No.</label>

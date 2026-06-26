@@ -233,6 +233,81 @@ function handleProductModelChange(value, prefix) {
   }
 }
 
+// 2.3 ADMIN BATTERY TWO-STEP SELECTOR
+// Tracks the currently selected battery type ('lithium' or 'nonlithium')
+let _selectedBatteryType = null;
+
+function selectBatteryType(type) {
+  _selectedBatteryType = type;
+
+  const btnLithium    = document.getElementById('w-btn-lithium');
+  const btnNonLithium = document.getElementById('w-btn-nonlithium');
+  const powerRow      = document.getElementById('w-battery-power-row');
+  const powerLabel    = document.getElementById('w-battery-power-label');
+  const powerInput    = document.getElementById('w-battery-power');
+
+  // Active style: highlight selected button
+  const activeStyle = {
+    background: 'linear-gradient(135deg, rgba(255,51,51,0.15) 0%, rgba(99,102,241,0.15) 100%)',
+    borderColor: 'var(--color-primary)',
+    color: '#ffffff',
+    boxShadow: '0 0 12px rgba(255,51,51,0.25)'
+  };
+  const inactiveStyle = {
+    background: 'rgba(255,255,255,0.03)',
+    borderColor: 'var(--border-color)',
+    color: 'var(--text-muted)',
+    boxShadow: 'none'
+  };
+
+  function applyStyle(el, styles) {
+    Object.assign(el.style, styles);
+  }
+
+  if (type === 'lithium') {
+    applyStyle(btnLithium, activeStyle);
+    applyStyle(btnNonLithium, inactiveStyle);
+    if (powerLabel) powerLabel.textContent = 'Battery Power (e.g. 48V-100Ah, 24V-200Ah)';
+    if (powerInput) powerInput.placeholder = 'e.g. 48V-100Ah, 24V-150Ah, 12V-200Ah';
+  } else {
+    applyStyle(btnNonLithium, activeStyle);
+    applyStyle(btnLithium, inactiveStyle);
+    if (powerLabel) powerLabel.textContent = 'Battery Power (e.g. 150Ah, 180Ah, 220Ah)';
+    if (powerInput) powerInput.placeholder = 'e.g. 100Ah, 150Ah, 180Ah, 220Ah';
+  }
+
+  // Show Step 2
+  if (powerRow) powerRow.style.display = 'block';
+
+  // Clear old value and recompose
+  if (powerInput) powerInput.value = '';
+  composeBatteryProductValue();
+
+  // Focus the brand input first
+  const brandInput = document.getElementById('w-battery-brand');
+  setTimeout(() => { if (brandInput) brandInput.focus(); }, 50);
+}
+
+function composeBatteryProductValue() {
+  const brandInput  = document.getElementById('w-battery-brand');
+  const powerInput  = document.getElementById('w-battery-power');
+  const hiddenInput = document.getElementById('w-product');
+  if (!hiddenInput) return;
+
+  const brand = brandInput ? brandInput.value.trim() : '';
+  const power = powerInput ? powerInput.value.trim() : '';
+
+  if (_selectedBatteryType && power) {
+    const typeLabel = _selectedBatteryType === 'lithium' ? 'Lithium' : 'Non-Lithium';
+    // Format: "Luminous Lithium 100Ah" or "Exide Non-Lithium 150Ah"
+    hiddenInput.value = brand
+      ? `${brand} ${typeLabel} ${power}`
+      : `${typeLabel} ${power}`;
+  } else {
+    hiddenInput.value = '';
+  }
+}
+
 
 // 3. AI QUERY SOLVER (CHAT BOT LOGIC)
 function handleChatKey(event) {
@@ -687,18 +762,25 @@ function registerPromaxSale(event) {
   const name = document.getElementById('w-name').value.trim();
   const phone = document.getElementById('w-phone').value.trim();
   const address = document.getElementById('w-address').value.trim();
-  const productVal = document.getElementById('w-product').value;
+  const productVal = document.getElementById('w-product').value.trim();
   const serial = document.getElementById('w-serial').value.trim();
   const date = document.getElementById('w-date').value;
   const duration = document.getElementById('w-duration').value;
 
-  // Resolve brand based on product model or brand input field
-  const brandVal = productVal.startsWith("Promax")
-    ? "Promax"
-    : (document.getElementById('w-brand').value.trim() || "Other");
+  // Validate product model was fully filled
+  if (!productVal) {
+    alert('Please select a battery type (Lithium / Non-Lithium) and enter the battery power before submitting.');
+    return;
+  }
+
+  // For the new battery selector model the brand is derived from the brand input
+  const batteryBrandInput = document.getElementById('w-battery-brand');
+  const brandVal = batteryBrandInput && batteryBrandInput.value.trim()
+    ? batteryBrandInput.value.trim()
+    : (_selectedBatteryType === 'lithium' ? 'Lithium' : 'Non-Lithium');
 
   const cardInput = document.getElementById('w-card-given');
-  const cardGiven = cardInput ? (cardInput.checked ? "Yes" : "No") : "No";
+  const cardGiven = cardInput ? (cardInput.checked ? 'Yes' : 'No') : 'No';
 
   const newSale = {
     name,
@@ -740,6 +822,29 @@ function registerPromaxSale(event) {
 function resetWarrantyForm() {
   document.getElementById('warranty-register-form').reset();
   document.getElementById('warranty-success').style.display = 'none';
+
+  // Reset battery two-step selector
+  _selectedBatteryType = null;
+  const powerRow = document.getElementById('w-battery-power-row');
+  if (powerRow) powerRow.style.display = 'none';
+  const powerInput = document.getElementById('w-battery-power');
+  if (powerInput) powerInput.value = '';
+  const brandInput = document.getElementById('w-battery-brand');
+  if (brandInput) brandInput.value = '';
+  const hiddenProduct = document.getElementById('w-product');
+  if (hiddenProduct) hiddenProduct.value = '';
+
+  // Reset button styles to inactive
+  const btnLi  = document.getElementById('w-btn-lithium');
+  const btnNon = document.getElementById('w-btn-nonlithium');
+  const inactiveStyle = {
+    background: 'rgba(255,255,255,0.03)',
+    borderColor: 'var(--border-color)',
+    color: 'var(--text-muted)',
+    boxShadow: 'none'
+  };
+  if (btnLi)  Object.assign(btnLi.style,  inactiveStyle);
+  if (btnNon) Object.assign(btnNon.style, inactiveStyle);
 
   // Set date field back to default today
   const dateInput = document.getElementById('w-date');
